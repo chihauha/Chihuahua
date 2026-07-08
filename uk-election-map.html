@@ -259,18 +259,16 @@
         
         function addLegend() {
             const legend = L.control({ position: 'topleft' });
-            legend.onAdd = function() {
+            legend.onAdd = function(map) {
                 const div = L.DomUtil.create('div', 'legend');
                 div.id = 'legend-content';
-                updateLegend();
+                buildLegendContent(div);
                 return div;
             };
             legend.addTo(map);
         }
         
-        function updateLegend() {
-            const div = document.getElementById('legend-content');
-            if (!div) return;
+        function buildLegendContent(div) {
             let html = `<div class="legend-title">${currentView === 'results' ? '2024 Results' : '2025 Polling'}</div>`;
             if (currentView === 'results') {
                 ['Labour', 'Conservative', 'Liberal Democrat', 'SNP', 'Plaid Cymru', 'Green', 'Reform', 'DUP', 'SDLP', 'Sinn Féin'].forEach(party => {
@@ -289,6 +287,10 @@
             }
             div.innerHTML = html;
         }
+        
+        function updateLegend() {
+            const div = document.getElementById('legend-content');
+            if (div) buildLegendContent(div);
     </script>
 </body>
 </html>
