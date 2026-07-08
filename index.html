@@ -158,7 +158,7 @@
         // ===== Configuration =====
         const CONFIG = {
             // iNaturalist species taxon ID for Alcedo atthis (Common Kingfisher)
-            SPECIES_ID: 13254,
+            SPECIES_ID: 2599,
             // API endpoint
             API_URL: 'https://api.inaturalist.org/v1/observations',
             // Max observations to fetch
@@ -211,8 +211,7 @@
                 taxon_id: CONFIG.SPECIES_ID,
                 per_page: CONFIG.MAX_RESULTS,
                 order_by: 'created_at',
-                order: 'desc',
-                has_photos: true  // Only observations with photos
+                order: 'desc'
             });
             
             const url = `${CONFIG.API_URL}?${params}`;
