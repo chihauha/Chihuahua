@@ -224,12 +224,14 @@
                 .then(data => {
                     observationData = data.results || [];
                     
-                    // Filter observations with valid coordinates
+                    // Filter observations with valid coordinates (from geojson)
                     const validObservations = observationData.filter(obs => 
-                        obs.latitude !== null && 
-                        obs.longitude !== null &&
-                        typeof obs.latitude === 'number' &&
-                        typeof obs.longitude === 'number'
+                        obs.geojson && 
+                        obs.geojson.coordinates &&
+                        Array.isArray(obs.geojson.coordinates) &&
+                        obs.geojson.coordinates.length === 2 &&
+                        typeof obs.geojson.coordinates[0] === 'number' &&
+                        typeof obs.geojson.coordinates[1] === 'number'
                     );
                     
                     if (validObservations.length === 0) {
@@ -255,8 +257,8 @@
         
         // ===== Add marker for an observation =====
         function addMarker(observation) {
-            const lat = observation.latitude;
-            const lon = observation.longitude;
+            // Extract coordinates from geojson (format: [longitude, latitude])
+            const [lon, lat] = observation.geojson.coordinates;
             
             // Get common name (with fallback to scientific name)
             const commonName = observation.species_guess || 'Unknown Species';
