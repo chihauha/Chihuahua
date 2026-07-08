@@ -1,0 +1,513 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>UK Election Map - 2024 Results & Polling</title>
+    
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
+    
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #f5f5f5;
+        }
+        
+        .container {
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+        }
+        
+        header {
+            background: linear-gradient(135deg, #1f4788 0%, #003087 100%);
+            color: white;
+            padding: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        h1 {
+            font-size: 28px;
+            margin-bottom: 10px;
+        }
+        
+        .subtitle {
+            font-size: 14px;
+            opacity: 0.9;
+        }
+        
+        .controls {
+            background: white;
+            padding: 15px 20px;
+            border-bottom: 1px solid #ddd;
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+        
+        .view-toggle {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+        
+        button {
+            background: #003087;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: background 0.3s ease;
+        }
+        
+        button:hover {
+            background: #1f4788;
+        }
+        
+        button.active {
+            background: #e4003b;
+        }
+        
+        .legend {
+            background: white;
+            padding: 15px;
+            border-radius: 4px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            font-size: 12px;
+            max-height: 350px;
+            overflow-y: auto;
+        }
+        
+        .legend-title {
+            font-weight: bold;
+            margin-bottom: 10px;
+            font-size: 13px;
+        }
+        
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 6px;
+        }
+        
+        .legend-color {
+            width: 20px;
+            height: 20px;
+            border-radius: 2px;
+            border: 1px solid #999;
+        }
+        
+        .legend-text {
+            font-size: 12px;
+        }
+        
+        #map {
+            flex: 1;
+            width: 100%;
+            z-index: 1;
+        }
+        
+        .leaflet-popup-content {
+            font-size: 13px;
+            line-height: 1.4;
+            max-width: 250px;
+        }
+        
+        .popup-title {
+            font-weight: bold;
+            font-size: 14px;
+            margin-bottom: 8px;
+        }
+        
+        .popup-result {
+            margin: 5px 0;
+            font-size: 12px;
+        }
+        
+        .status {
+            font-size: 13px;
+            color: #666;
+            flex-grow: 1;
+        }
+        
+        .loading {
+            color: #003087;
+            font-weight: 500;
+        }
+        
+        @media (max-width: 600px) {
+            h1 {
+                font-size: 20px;
+            }
+            
+            .controls {
+                padding: 12px 15px;
+                gap: 8px;
+            }
+            
+            button {
+                padding: 8px 15px;
+                font-size: 12px;
+            }
+            
+            .legend {
+                font-size: 11px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🗳️ UK Election Map</h1>
+            <p class="subtitle">2024 General Election Results vs 2025 Polling Predictions</p>
+        </header>
+        
+        <div class="controls">
+            <div class="view-toggle">
+                <span>View:</span>
+                <button id="resultsBtn" class="active">2024 Results</button>
+                <button id="pollingBtn">2025 Polling</button>
+            </div>
+            <span class="status" id="status">Loading map data...</span>
+        </div>
+        
+        <div id="map"></div>
+    </div>
+    
+    <!-- Leaflet JS -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+    
+    <script>
+        // ===== Party Colors =====
+        const PARTY_COLORS = {
+            'Labour': '#e4003b',
+            'Conservative': '#0087dc',
+            'Lib Dem': '#faa61a',
+            'SNP': '#fff95d',
+            'Plaid Cymru': '#008142',
+            'Reform': '#00b2ff',
+            'Green': '#6ab023',
+            'SDLP': '#099a4d',
+            'Sinn Féin': '#326760',
+            'DUP': '#d46a4c',
+            'Alliance': '#f6cb2f',
+            'Independent': '#999999'
+        };
+        
+        // ===== Global State =====
+        let map;
+        let constituencies = {};
+        let currentView = 'results'; // 'results' or 'polling'
+        let featuresLayer;
+        
+        // ===== Data for 2024 Election Results and 2025 Polling =====
+        const electionData = {
+            // 2024 General Election Results (sample - in production use real data)
+            results: {
+                'E14000530': { name: 'Ashton-under-Lyne', result: 'Labour', votesPercent: 48, previousParty: 'Labour' },
+                'E14000534': { name: 'Aylesbury', result: 'Conservative', votesPercent: 42, previousParty: 'Conservative' },
+                'E14000543': { name: 'Banbury', result: 'Conservative', votesPercent: 45, previousParty: 'Conservative' },
+                'E14000551': { name: 'Basildon and Billericay', result: 'Conservative', votesPercent: 43, previousParty: 'Conservative' },
+                'E14000559': { name: 'Batley and Spen', result: 'Labour', votesPercent: 49, previousParty: 'Labour' },
+                'E14000561': { name: 'Beckenham', result: 'Conservative', votesPercent: 44, previousParty: 'Conservative' },
+                'E14000570': { name: 'Bethnal Green and Bow', result: 'Labour', votesPercent: 62, previousParty: 'Labour' },
+                'E14000577': { name: 'Blyth and Ashington', result: 'Labour', votesPercent: 46, previousParty: 'Labour' },
+                'E14000580': { name: 'Bosworth', result: 'Conservative', votesPercent: 42, previousParty: 'Conservative' },
+                'E14000589': { name: 'Brighton Pavilion', result: 'Green', votesPercent: 35, previousParty: 'Green' },
+                'E14000590': { name: 'Bristol East', result: 'Labour', votesPercent: 55, previousParty: 'Labour' },
+                'E14000591': { name: 'Bristol North West', result: 'Labour', votesPercent: 52, previousParty: 'Labour' },
+                'E14000593': { name: 'Bristol West', result: 'Labour', votesPercent: 48, previousParty: 'Labour' },
+                'E14000594': { name: 'Bromley and Chislehurst', result: 'Conservative', votesPercent: 43, previousParty: 'Conservative' },
+                'E14000599': { name: 'Buckingham', result: 'Independent', votesPercent: 41, previousParty: 'Conservative' }
+            },
+            // 2025 Polling (sample - in production use latest poll data)
+            polling: {
+                'E14000530': { name: 'Ashton-under-Lyne', polled: 'Labour', pollPercent: 49 },
+                'E14000534': { name: 'Aylesbury', polled: 'Labour', pollPercent: 44 },
+                'E14000543': { name: 'Banbury', polled: 'Conservative', pollPercent: 42 },
+                'E14000551': { name: 'Basildon and Billericay', polled: 'Labour', pollPercent: 46 },
+                'E14000559': { name: 'Batley and Spen', polled: 'Labour', pollPercent: 50 },
+                'E14000561': { name: 'Beckenham', polled: 'Labour', pollPercent: 47 },
+                'E14000570': { name: 'Bethnal Green and Bow', polled: 'Labour', pollPercent: 63 },
+                'E14000577': { name: 'Blyth and Ashington', polled: 'Labour', pollPercent: 47 },
+                'E14000580': { name: 'Bosworth', polled: 'Labour', pollPercent: 44 },
+                'E14000589': { name: 'Brighton Pavilion', polled: 'Green', pollPercent: 36 },
+                'E14000590': { name: 'Bristol East', polled: 'Labour', pollPercent: 56 },
+                'E14000591': { name: 'Bristol North West', polled: 'Labour', pollPercent: 53 },
+                'E14000593': { name: 'Bristol West', polled: 'Labour', pollPercent: 49 },
+                'E14000594': { name: 'Bromley and Chislehurst', polled: 'Labour', pollPercent: 45 },
+                'E14000599': { name: 'Buckingham', polled: 'Independent', pollPercent: 38 }
+            }
+        };
+        
+        // ===== Initialize on page load =====
+        document.addEventListener('DOMContentLoaded', initializeApp);
+        
+        function initializeApp() {
+            // Initialize map
+            initializeMap();
+            
+            // Set up event listeners
+            document.getElementById('resultsBtn').addEventListener('click', () => switchView('results'));
+            document.getElementById('pollingBtn').addEventListener('click', () => switchView('polling'));
+            
+            // Load and display constituency data
+            loadConstituencyData();
+        }
+        
+        // ===== Initialize Leaflet map =====
+        function initializeMap() {
+            map = L.map('map').setView([55.3781, -3.4360], 6);
+            
+            // Esri World Imagery basemap
+            L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+                attribution: '&copy; Esri',
+                maxZoom: 18
+            }).addTo(map);
+            
+            // Add legend
+            addLegend();
+        }
+        
+        // ===== Load UK constituency data =====
+        function loadConstituencyData() {
+            // Using TopoJSON with UK constituencies from Open Geography Portal
+            const topoUrl = 'https://cdn.jsdelivr.net/npm/uk-atlas@3/constituencies-10m.json';
+            
+            fetch(topoUrl)
+                .then(res => res.json())
+                .then(data => {
+                    // Convert TopoJSON to GeoJSON
+                    const geojson = convertTopoToGeo(data);
+                    displayConstituencies(geojson);
+                    document.getElementById('status').textContent = `Displaying ${Object.keys(electionData.results).length} constituencies`;
+                })
+                .catch(error => {
+                    console.error('Error loading constituency data:', error);
+                    document.getElementById('status').textContent = 'Error loading map data';
+                    // Fallback to simple centroids if TopoJSON fails
+                    displaySimpleMap();
+                });
+        }
+        
+        // ===== Convert TopoJSON to GeoJSON =====
+        function convertTopoToGeo(topology) {
+            // Simple conversion - in production use topojson-client library
+            const objects = topology.objects;
+            const arcs = topology.arcs;
+            
+            // This is a simplified approach - real implementation would use topojson-client
+            return {
+                type: 'FeatureCollection',
+                features: []
+            };
+        }
+        
+        // ===== Display constituencies on map =====
+        function displayConstituencies(geojson) {
+            if (featuresLayer) {
+                map.removeLayer(featuresLayer);
+            }
+            
+            // Create markers for sample constituencies
+            featuresLayer = L.featureGroup();
+            
+            const colors = getColorScheme(currentView);
+            
+            Object.entries(electionData[currentView]).forEach(([code, data]) => {
+                const color = colors[code];
+                
+                // Add marker with popup
+                const marker = L.circleMarker([55 + Math.random() * 5, -3 + Math.random() * 8], {
+                    radius: 8,
+                    fillColor: color,
+                    color: '#333',
+                    weight: 2,
+                    opacity: 0.8,
+                    fillOpacity: 0.7
+                });
+                
+                const popupContent = createPopup(data, currentView);
+                marker.bindPopup(popupContent);
+                marker.addTo(featuresLayer);
+            });
+            
+            featuresLayer.addTo(map);
+        }
+        
+        // ===== Get color scheme based on view and data =====
+        function getColorScheme(view) {
+            const colors = {};
+            const results = electionData.results;
+            const polling = electionData.polling;
+            
+            Object.keys(results).forEach(code => {
+                if (view === 'results') {
+                    const result = results[code];
+                    colors[code] = PARTY_COLORS[result.result] || '#999999';
+                } else {
+                    const result = results[code];
+                    const poll = polling[code];
+                    
+                    if (result.result === poll.polled) {
+                        // Same party - use party color
+                        colors[code] = PARTY_COLORS[result.result] || '#999999';
+                    } else {
+                        // Changed hands - apply special colors
+                        if (poll.polled === 'Green') {
+                            colors[code] = '#20B2AA'; // Teal for Greens
+                        } else if (poll.polled === 'Reform') {
+                            colors[code] = '#800080'; // Purple for Reform
+                        } else if (poll.polled === 'Conservative') {
+                            colors[code] = '#FFFFFF'; // White for Conservatives
+                        } else {
+                            colors[code] = '#000000'; // Black for any other change
+                        }
+                    }
+                }
+            });
+            
+            return colors;
+        }
+        
+        // ===== Create popup content =====
+        function createPopup(data, view) {
+            let html = `<div class="popup-title">${data.name}</div>`;
+            
+            if (view === 'results') {
+                html += `
+                    <div class="popup-result"><strong>2024 Result:</strong> ${data.result}</div>
+                    <div class="popup-result"><strong>Vote Share:</strong> ${data.votesPercent}%</div>
+                    <div class="popup-result"><strong>Previous:</strong> ${data.previousParty}</div>
+                `;
+            } else {
+                const resultData = electionData.results[Object.keys(electionData.results).find(k => electionData.results[k].name === data.name)];
+                html += `
+                    <div class="popup-result"><strong>2024 Result:</strong> ${resultData.result}</div>
+                    <div class="popup-result"><strong>2025 Poll:</strong> ${data.polled}</div>
+                    <div class="popup-result"><strong>Polled Vote Share:</strong> ${data.pollPercent}%</div>
+                `;
+            }
+            
+            return html;
+        }
+        
+        // ===== Switch between results and polling views =====
+        function switchView(view) {
+            currentView = view;
+            
+            // Update button states
+            document.getElementById('resultsBtn').classList.toggle('active', view === 'results');
+            document.getElementById('pollingBtn').classList.toggle('active', view === 'polling');
+            
+            // Redraw constituencies
+            displayConstituencies(null);
+            updateLegend(view);
+        }
+        
+        // ===== Add legend to map =====
+        function addLegend() {
+            const legend = L.control({ position: 'topleft' });
+            
+            legend.onAdd = function() {
+                const div = L.DomUtil.create('div', 'legend');
+                div.id = 'legend-content';
+                updateLegendContent(div, 'results');
+                return div;
+            };
+            
+            legend.addTo(map);
+        }
+        
+        // ===== Update legend content =====
+        function updateLegend(view) {
+            const div = document.getElementById('legend-content');
+            if (div) {
+                updateLegendContent(div, view);
+            }
+        }
+        
+        function updateLegendContent(div, view) {
+            let html = `<div class="legend-title">${view === 'results' ? '2024 Results' : '2025 Polling'}</div>`;
+            
+            if (view === 'results') {
+                Object.entries(PARTY_COLORS).forEach(([party, color]) => {
+                    html += `
+                        <div class="legend-item">
+                            <div class="legend-color" style="background-color: ${color};"></div>
+                            <span class="legend-text">${party}</span>
+                        </div>
+                    `;
+                });
+            } else {
+                html += `<div style="font-size: 11px; margin-bottom: 8px;"><strong>Unchanged seat:</strong></div>`;
+                Object.entries(PARTY_COLORS).slice(0, 4).forEach(([party, color]) => {
+                    html += `
+                        <div class="legend-item">
+                            <div class="legend-color" style="background-color: ${color};"></div>
+                            <span class="legend-text">${party}</span>
+                        </div>
+                    `;
+                });
+                html += `<div style="font-size: 11px; margin-top: 10px; margin-bottom: 8px;"><strong>Seat changes:</strong></div>`;
+                html += `
+                    <div class="legend-item">
+                        <div class="legend-color" style="background-color: #20B2AA;"></div>
+                        <span class="legend-text">Gained by Greens</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-color" style="background-color: #800080;"></div>
+                        <span class="legend-text">Gained by Reform</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-color" style="background-color: #FFFFFF; border: 2px solid #333;"></div>
+                        <span class="legend-text">Gained by Conservatives</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-color" style="background-color: #000000;"></div>
+                        <span class="legend-text">Other changes</span>
+                    </div>
+                `;
+            }
+            
+            div.innerHTML = html;
+        }
+        
+        // ===== Fallback simple map display =====
+        function displaySimpleMap() {
+            const colors = getColorScheme(currentView);
+            
+            Object.entries(electionData[currentView]).slice(0, 10).forEach(([code, data], idx) => {
+                const color = colors[code];
+                const lat = 54 + (idx * 0.5);
+                const lng = -2 + (idx * 0.8);
+                
+                const marker = L.circleMarker([lat, lng], {
+                    radius: 10,
+                    fillColor: color,
+                    color: '#333',
+                    weight: 2,
+                    opacity: 0.8,
+                    fillOpacity: 0.7
+                });
+                
+                const popupContent = createPopup(data, currentView);
+                marker.bindPopup(popupContent);
+                marker.addTo(map);
+            });
+        }
+    </script>
+</body>
+</html>
